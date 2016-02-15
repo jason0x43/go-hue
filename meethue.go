@@ -103,7 +103,7 @@ func (l *MeetHueLightState) ToLightState() LightState {
 		r := l.Color.Red
 		g := l.Color.Green
 		b := l.Color.Blue
-		x, y := toXy(r, g, b)
+		x, y := ToXyY(r, g, b)
 		ls.Xy = []float64{x, y}
 	}
 
@@ -111,7 +111,7 @@ func (l *MeetHueLightState) ToLightState() LightState {
 }
 
 // GetMeetHueScenes returns the scenes available in a user's meethue.com account.
-func (s *MeetHueSession) GetMeetHueScenes() ([]MeetHueScene, error) {
+func (s *MeetHueSession) GetMeetHueScenes() (map[string]MeetHueScene, error) {
 	var page struct {
 		Pagination struct {
 			Amount  int  `json:"amountperpage"`
@@ -121,15 +121,15 @@ func (s *MeetHueSession) GetMeetHueScenes() ([]MeetHueScene, error) {
 		TotalAmount string `json:"totalamount"`
 		Scenes      []struct {
 			Category string       `json:"category"`
-			Json     MeetHueScene `json:"json"`
+			JSON     MeetHueScene `json:"json"`
 		} `json:"scenes"`
 	}
-	var scenes []MeetHueScene
+	scenes := make(map[string]MeetHueScene)
 	pageNum := 1
 
 	for {
-		sceneUrl := fmt.Sprintf("https://my.meethue.com/api/v3/myhue/scenes/?token=%s&page=%v", s.token, pageNum)
-		resp, err := http.Get(sceneUrl)
+		sceneURL := fmt.Sprintf("https://my.meethue.com/api/v3/myhue/scenes/?token=%s&page=%v", s.token, pageNum)
+		resp, err := http.Get(sceneURL)
 		if err != nil {
 			return nil, err
 		}
@@ -144,8 +144,8 @@ func (s *MeetHueSession) GetMeetHueScenes() ([]MeetHueScene, error) {
 		}
 
 		for _, scene := range page.Scenes {
-			scene.Json.Category = scene.Category
-			scenes = append(scenes, scene.Json)
+			scene.JSON.Category = scene.Category
+			scenes[scene.JSON.Id] = scene.JSON
 		}
 
 		if page.Pagination.HasNext {

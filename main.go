@@ -2,24 +2,30 @@
 //
 // It allows individual lights to be controlled, and can download scenes from a
 // user's meethue.com account.
-
 package hue
 
 import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"net/http"
+	"regexp"
+	"strings"
 )
 
 // Hub represents a Hue hub.
 type Hub struct {
-	Id         string `json:"id"`
-	IpAddress  string `json:"internalipaddress"`
+	ID         string `json:"id"`
+	IPAddress  string `json:"internalipaddress"`
 	MacAddress string `json:"macaddress"`
 	Name       string `json:"name"`
+}
+
+func (h Hub) String() string {
+	return h.IPAddress
 }
 
 // LightState describes the state of a light.
@@ -36,7 +42,11 @@ type LightState struct {
 
 // Light represents a light.
 type Light struct {
-	Id          string            `json:"-"`
+	hueLight
+	ID string
+}
+
+type hueLight struct {
 	State       LightState        `json:"state"`
 	Type        string            `json:"type"`
 	Name        string            `json:"name"`
@@ -45,12 +55,59 @@ type Light struct {
 	PointSymbol map[string]string `json:"pointsymbol"`
 }
 
+func (l Light) String() string {
+	return fmt.Sprintf("[%s] %v", l.ID, l.Name)
+}
+
+// func (l Light) GetColorRGB() (int, int, int) {
+// }
+
+// func (l Light) SetColorRGB(r, g, b int) {
+// }
+
+// ByID is a Light array used for sorting
+type ByID []Light
+
+func (b ByID) Len() int           { return len(b) }
+func (b ByID) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b ByID) Less(i, j int) bool { return b[i].ID < b[j].ID }
+
 // Scene describes the states of a group of lights.
 type Scene struct {
-	id     string
+	hueScene
+	ID        string
+	ShortName string
+}
+
+type hueScene struct {
+	Name        string   `json:"name"`
+	Owner       string   `json:"owner"`
+	LastUpdated string   `json:"lastupdated"`
+	Lights      []string `json:"lights"`
+	Version     int      `json:"version"`
+}
+
+func (s Scene) String() string {
+	return fmt.Sprintf("%s [%s]", s.Name, strings.Join(s.Lights, ", "))
+}
+
+// ByName is a Scene array used for sorting
+type ByName []Scene
+
+func (b ByName) Len() int           { return len(b) }
+func (b ByName) Swap(i, j int)      { b[i], b[j] = b[j], b[i] }
+func (b ByName) Less(i, j int) bool { return b[i].Name < b[j].Name }
+
+// Group represents a group of lights.
+type Group struct {
+	hueGroup
+	ID string
+}
+
+type hueGroup struct {
 	Name   string   `json:"name"`
 	Lights []string `json:"lights"`
-	Active bool     `json:"active"`
+	Type   string   `json:"type"`
 }
 
 // Session is a handle used to interact with a specific hub.
@@ -123,8 +180,8 @@ func OpenSession(ipAddress string, username string) Session {
 	}
 }
 
-// IpAddress returns the IP address of a session.
-func (s *Session) IpAddress() string {
+// IPAddress returns the IP address of a session.
+func (s *Session) IPAddress() string {
 	return s.ipAddress
 }
 
@@ -133,36 +190,53 @@ func (s *Session) Username() string {
 	return s.username
 }
 
-// Url returns the URL a session uses to control a hub.
-func (s *Session) Url() string {
+// URL returns the URL a session uses to control a hub.
+func (s *Session) URL() string {
 	return "http://" + s.ipAddress + "/api/" + s.username
 }
 
 // Lights returns a map of the Lights available from session's hub.
-func (s *Session) Lights() (map[string]Light, error) {
-	var lights map[string]Light
-	err := restGet(s.Url()+"/lights", &lights)
-	if err == nil {
-		for id, light := range lights {
-			light.Id = id
-			lights[id] = light
-		}
+func (s *Session) Lights() (lights map[string]Light, err error) {
+	if err = restGet(s.URL()+"/lights", &lights); err != nil {
+		return
 	}
-	return lights, err
+	for id, light := range lights {
+		light.ID = id
+		lights[id] = light
+	}
+	return
 }
 
 // Scenes returns a map of the Scenes available from the session's hub.
-func (s *Session) Scenes() (map[string]Scene, error) {
-	var scenes map[string]Scene
-	err := restGet(s.Url()+"/scenes", &scenes)
-	return scenes, err
+func (s *Session) Scenes() (scenes map[string]Scene, err error) {
+	if err = restGet(s.URL()+"/scenes", &scenes); err != nil {
+		return
+	}
+	re, _ := regexp.Compile("\\son\\s\\d+$")
+	for id, scene := range scenes {
+		scene.ShortName = re.ReplaceAllString(scene.Name, "")
+		scene.ID = id
+		scenes[id] = scene
+	}
+	return
+}
+
+// Groups returns a map of the Groups available from the session's hub.
+func (s *Session) Groups() (groups map[string]Group, err error) {
+	if err = restGet(s.URL()+"/groups", &groups); err != nil {
+		return
+	}
+	for id, group := range groups {
+		group.ID = id
+		groups[id] = group
+	}
+	return
 }
 
 // SetScene sets the scene for group 0.
 func (s *Session) SetScene(id string) error {
-	data := map[string]string{
-		"scene": id}
-	resp, err := restPut(s.Url()+"/groups/0/action", &data)
+	data := map[string]string{"scene": id}
+	resp, err := restPut(s.URL()+"/groups/0/action", &data)
 	log.Printf("Response: %#v", resp)
 	return err
 }
@@ -170,7 +244,7 @@ func (s *Session) SetScene(id string) error {
 // SetLightState sets the state of a specific light.
 func (s *Session) SetLightState(id string, state LightState) error {
 	log.Printf("Setting light state to: %#v", state)
-	resp, err := restPut(s.Url()+"/lights/"+id+"/state", state)
+	resp, err := restPut(s.URL()+"/lights/"+id+"/state", state)
 	log.Printf("Response: %#v", resp)
 	return err
 }

@@ -6,7 +6,7 @@ import (
 
 // ToXyY converts a 24-bit RGB value into a value in the CIE xyY color space.
 // Based on https://github.com/PhilipsHue/PhilipsHueSDK-iOS-OSX/blob/master/ApplicationDesignNotes/RGB%20to%20xy%20Color%20conversion.md
-func toXy(r float64, g float64, b float64) (float64, float64) {
+func ToXyY(r float64, g float64, b float64) (float64, float64) {
 	// scale
 	r, g, b = r/255.0, g/255.0, b/255.0
 

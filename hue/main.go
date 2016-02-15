@@ -28,7 +28,7 @@ func main() {
 	fmt.Printf("Hubs\n")
 	fmt.Printf("----\n")
 	for _, h := range hubs {
-		fmt.Printf("%#v\n", h)
+		fmt.Printf("%s\n", h)
 	}
 	fmt.Printf("\n")
 
@@ -48,7 +48,7 @@ func main() {
 	fmt.Printf("Lights\n")
 	fmt.Printf("------\n")
 	for _, l := range lights {
-		fmt.Printf("%#v\n", l)
+		fmt.Printf("%s\n", l)
 	}
 	fmt.Printf("\n")
 
@@ -56,7 +56,7 @@ func main() {
 	fmt.Printf("Scenes\n")
 	fmt.Printf("------\n")
 	for _, s := range scenes {
-		fmt.Printf("%#v\n", s)
+		fmt.Printf("%s\n", s)
 	}
 	fmt.Printf("\n")
 }
