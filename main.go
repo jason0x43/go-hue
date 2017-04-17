@@ -11,8 +11,10 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -30,14 +32,15 @@ func (h Hub) String() string {
 
 // LightState describes the state of a light.
 type LightState struct {
-	On         bool      `json:"on"`
-	Brightness int       `json:"bri,omitempty"`
-	Hue        int       `json:"hue,omitempty"`
-	Saturation int       `json:"sat,omitempty"`
-	Xy         []float64 `json:"xy,omitempty"`
-	Ct         int       `json:"ct,omitempty"`
-	Alert      string    `json:"alert,omitempty"`
-	Effect     string    `json:"effect,omitempty"`
+	On         bool       `json:"on"`
+	Brightness int        `json:"bri,omitempty"`
+	Hue        int        `json:"hue,omitempty"`
+	Saturation int        `json:"sat,omitempty"`
+	Xy         [2]float64 `json:"xy,omitempty"`
+	Ct         int        `json:"ct,omitempty"`
+	Alert      string     `json:"alert,omitempty"`
+	Effect     string     `json:"effect,omitempty"`
+	ColorMode  string     `json:"colormode,omitempty"`
 }
 
 // Light represents a light.
@@ -47,23 +50,64 @@ type Light struct {
 }
 
 type hueLight struct {
-	State       LightState        `json:"state"`
-	Type        string            `json:"type"`
-	Name        string            `json:"name"`
-	Model       string            `json:"modelid"`
-	SwVersion   string            `json:"swversion"`
-	PointSymbol map[string]string `json:"pointsymbol"`
+	State     LightState `json:"state"`
+	Type      string     `json:"type"`
+	Name      string     `json:"name"`
+	Model     string     `json:"modelid"`
+	SwVersion string     `json:"swversion"`
 }
 
-func (l Light) String() string {
+func (l *Light) String() string {
 	return fmt.Sprintf("[%s] %v", l.ID, l.Name)
 }
 
-// func (l Light) GetColorRGB() (int, int, int) {
-// }
+// GetColorRGB returns a light's color as an RGB value
+func (l *Light) GetColorRGB() (int, int, int) {
+	gamut := GetGamut(l.Model)
+	state := l.State
+	r, g, b := gamut.ToRGB(state.Xy[0], state.Xy[1], float64(state.Brightness)/255.0)
+	log.Printf("XyY(%f, %f, %f) -> RGB(%d, %d, %d)", state.Xy[0], state.Xy[1], float64(state.Brightness)/255.0, r, g, b)
+	return r, g, b
+}
 
-// func (l Light) SetColorRGB(r, g, b int) {
-// }
+// SetColorRGB sets a light's color from an RGB value
+func (l *Light) SetColorRGB(r, g, b int) (err error) {
+	gamut := GetGamut(l.Model)
+	x, y, Y := gamut.ToXyY(r, g, b)
+	l.State.Xy = [2]float64{x, y}
+	l.State.Brightness = int(math.Ceil(Y*255.0 - 0.5))
+	log.Printf("RGB(%d, %d, %d) -> XyY(%f, %f, %f) [%d]", r, g, b, x, y, Y, l.State.Brightness)
+	return
+}
+
+// SetColorHex sets a light's color from an RGB hex string
+func (l *Light) SetColorHex(hex string) (err error) {
+	if matched, err := regexp.MatchString("#?[a-fA-F0-9]{6}", hex); !matched || err != nil {
+		if err != nil {
+			return err
+		}
+		return fmt.Errorf("Invalid color string '%s'", hex)
+	}
+
+	hex = strings.TrimPrefix(hex, "#")
+	r, _ := strconv.ParseInt(hex[0:2], 16, 0)
+	g, _ := strconv.ParseInt(hex[2:4], 16, 0)
+	b, _ := strconv.ParseInt(hex[4:6], 16, 0)
+
+	return l.SetColorRGB(int(r), int(g), int(b))
+}
+
+// GetColorHSL returns a light's color as an HSL value
+func (l *Light) GetColorHSL() (float64, float64, float64) {
+	gamut := GetGamut(l.Model)
+	state := l.State
+	return gamut.ToHSL(state.Xy[0], state.Xy[1], float64(state.Brightness)/255.0)
+}
+
+// SetColorHSL sets a light's color from an HSL value
+func (l *Light) SetColorHSL(h, s, bri float64) (err error) {
+	return
+}
 
 // ByID is a Light array used for sorting
 type ByID []Light
@@ -105,9 +149,10 @@ type Group struct {
 }
 
 type hueGroup struct {
-	Name   string   `json:"name"`
-	Lights []string `json:"lights"`
-	Type   string   `json:"type"`
+	Name   string     `json:"name"`
+	Lights []string   `json:"lights"`
+	Type   string     `json:"type"`
+	State  LightState `json:"action"`
 }
 
 // Session is a handle used to interact with a specific hub.
@@ -243,8 +288,19 @@ func (s *Session) SetScene(id string) error {
 
 // SetLightState sets the state of a specific light.
 func (s *Session) SetLightState(id string, state LightState) error {
+	// clear the colormode before posting
+	state.ColorMode = ""
 	log.Printf("Setting light state to: %#v", state)
 	resp, err := restPut(s.URL()+"/lights/"+id+"/state", state)
+	log.Printf("Response: %#v", resp)
+	return err
+}
+
+// SetLightName sets the name of a specific light.
+func (s *Session) SetLightName(id string, name string) error {
+	log.Printf("Setting light name to: %#v", name)
+	data := map[string]string{"name": name}
+	resp, err := restPut(s.URL()+"/lights/"+id, &data)
 	log.Printf("Response: %#v", resp)
 	return err
 }
