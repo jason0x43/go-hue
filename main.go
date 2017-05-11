@@ -62,7 +62,7 @@ func (l *Light) String() string {
 }
 
 // GetColorRGB returns a light's color as an RGB value
-func (l *Light) GetColorRGB() (int, int, int) {
+func (l *Light) GetColorRGB() (uint8, uint8, uint8) {
 	gamut := GetGamut(l.Model)
 	state := l.State
 	r, g, b := gamut.ToRGB(state.Xy[0], state.Xy[1], float64(state.Brightness)/255.0)

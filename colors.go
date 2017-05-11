@@ -75,7 +75,7 @@ func (gamut *Gamut) ToXyY(r, g, b int) (x, y, Y float64) {
 }
 
 // ToRGB converts an XY value in the CIE into a 24-bit RGB value.
-func (gamut *Gamut) ToRGB(x, y, bri float64) (r, g, b int) {
+func (gamut *Gamut) ToRGB(x, y, bri float64) (r, g, b uint8) {
 	// check if (x, y) is contained within the triangle
 	if !gamut.inLampsReach(x, y) {
 		log.Printf("Not in reach")
@@ -116,9 +116,9 @@ func (gamut *Gamut) ToRGB(x, y, bri float64) (r, g, b int) {
 	}
 
 	// Scale up
-	r = int(math.Ceil(rf*255.0 - 0.5))
-	g = int(math.Ceil(gf*255.0 - 0.5))
-	b = int(math.Ceil(bf*255.0 - 0.5))
+	r = uint8(math.Ceil(rf*255.0 - 0.5))
+	g = uint8(math.Ceil(gf*255.0 - 0.5))
+	b = uint8(math.Ceil(bf*255.0 - 0.5))
 
 	return
 }
@@ -130,7 +130,7 @@ func (gamut *Gamut) ToHSL(x, y, bri float64) (h, s, l float64) {
 }
 
 // Convert an RGB value to an HSL value, where H is in [0, 360], S is in [0, 1], and L is in [0, 1]
-func rgbToHsl(r, g, b int) (h, s, l float64) {
+func rgbToHsl(r, g, b uint8) (h, s, l float64) {
 	rf := float64(r) / 255.0
 	gf := float64(g) / 255.0
 	bf := float64(b) / 255.0
